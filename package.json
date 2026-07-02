@@ -1,9 +1,14 @@
 {
   "name": "backpack",
+  "version": "0.1.0",
   "module": "index.ts",
   "type": "module",
+  "bin": {
+    "backpack": "cli.ts"
+  },
   "scripts": {
     "serve": "bun server.ts",
+    "cli": "bun cli.ts",
     "demo": "bun run index.ts",
     "test": "bun test"
   },

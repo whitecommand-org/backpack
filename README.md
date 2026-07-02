@@ -144,6 +144,29 @@ curl -H 'X-Backpack-Dir: /path/to/project' localhost:4000/capabilities
 Tools are **read-only** over HTTP (a handler can't be sent as JSON). Errors are
 `{ error: { code, message, details? } }` (400/404/409/422).
 
+## CLI
+
+`bun cli.ts <command>` (or `backpack` once installed) operates on one folder — `--dir`,
+default the current directory. It's **embedded** (talks to the folder's SQLite directly, no
+server) and shares the exact services and readable output as the HTTP API.
+
+```bash
+bun cli.ts overview --dir ./project
+bun cli.ts list agents                       # readable summaries; add --json for scripting
+echo '{"id":"reviewer","name":"Reviewer","description":"Reviews diffs",
+       "systemPrompt":"Be terse.","model":"sonnet"}' | bun cli.ts add agents
+bun cli.ts get agents reviewer
+bun cli.ts import                             # adopt the folder's existing tool configs
+bun cli.ts export codex --write               # write .codex/config.toml into the folder
+bun cli.ts targets                            # export targets and their supported kinds
+bun cli.ts serve --port 4000                  # start the HTTP API
+```
+
+Commands: `overview`, `list [kind]`, `get <kind> <id>`, `add <kind>`, `set <kind> <id>`,
+`rm <kind> <id>`, `import`, `export <target>`, `targets`, `serve`, `help`. Capability input
+for `add`/`set` is JSON via `--data`, `--file`, or stdin. Tools are read-only. Exit code is
+non-zero on error.
+
 ## Architecture (hexagonal)
 
 ```
@@ -154,12 +177,13 @@ src/
   application/     CORE — ports, DTOs, read-model (readable data), query + command services
   infrastructure/  wiring — DiskWorkspaceGateway + WorkspaceRegistry (opens a store per folder)
   http/            DRIVING — pure router(req)→Response + createBackpackServer (Bun.serve)
+  cli/             DRIVING — pure run(argv,io)→exit code
 index.ts           library demo: define → emit → import → save/load
-server.ts          HTTP entrypoint
+server.ts          HTTP entrypoint · cli.ts  CLI entrypoint
 ```
 
-The **application layer is transport-agnostic**: the HTTP router and the planned CLI are
-both driving adapters over the same `BackpackService` (commands) and `BackpackQueryService`
+The **application layer is transport-agnostic**: the HTTP router and the CLI are both
+driving adapters over the same `BackpackService` (commands) and `BackpackQueryService`
 (reads). The read layer (`application/read-model.ts`) projects raw SQLite rows into readable
 DTOs. `application` depends only on ports; `store`/`infrastructure`/`http` depend on
 `application` — never the reverse.

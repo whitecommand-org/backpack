@@ -13,6 +13,7 @@ export * from "./store/sqlite.ts";
 export * from "./application/index.ts";
 export * from "./infrastructure/index.ts";
 export * from "./http/index.ts";
+export * from "./cli/index.ts";
 
 /** Run several adapters over one backpack, keyed by adapter id. */
 export function emit(
