@@ -7,6 +7,7 @@ Claude Code, Codex CLI, GitHub Copilot CLI, and the SDKs.
 ```bash
 bun install
 bun run index.ts   # emits configs for every target and prints the file list
+bun server.ts      # start the HTTP API (default :4000)
 bun test
 ```
 
@@ -116,12 +117,49 @@ takes a `toolHandlers` map to re-attach them; unbound tools get a throwing stub 
 diagnostic. This is why `Tool.parameters` accepts a zod schema **or** a JSON-Schema
 object. Typical flow: **import → save → load → emit**.
 
-## Layout
+## HTTP API — manage a backpack in any folder
+
+`bun server.ts` starts a **multi-workspace** API (no auth): each request names the
+folder it operates on via a `dir` body field, `?dir=`, or an `X-Backpack-Dir` header.
+The store lives at `<dir>/.backpack/backpack.db`.
+
+| Method + path | Action |
+|---|---|
+| `GET /health` · `GET /targets` | liveness · exporter support matrix |
+| `GET /overview` | capability counts by kind |
+| `GET /capabilities?kind=&q=` | readable summaries |
+| `GET /capabilities/:kind/:id` | readable detail |
+| `POST /capabilities/:kind` · `PUT …/:id` · `DELETE …/:id` | create · update · delete |
+| `POST /import` `{ targets? }` | import the folder's configs into the store |
+| `POST /export` `{ target, write? }` | emit a target's config (optionally write to the folder) |
+
+```bash
+curl -X POST localhost:4000/capabilities/agents -H 'content-type: application/json' \
+  -d '{"dir":"/path/to/project","id":"reviewer","name":"Reviewer",
+       "description":"Reviews diffs","systemPrompt":"Be terse.","model":"sonnet"}'
+curl -H 'X-Backpack-Dir: /path/to/project' localhost:4000/capabilities
+#  → { "capabilities": [ { "id":"reviewer", "detail":"model sonnet · all tools", … } ] }
+```
+
+Tools are **read-only** over HTTP (a handler can't be sent as JSON). Errors are
+`{ error: { code, message, details? } }` (400/404/409/422).
+
+## Architecture (hexagonal)
 
 ```
 src/
-  core/        zod schemas (source of truth) + Adapter/Importer contracts + defineBackpack()
-  adapters/    claude-code, codex, copilot-cli, sdk (emit + import), shared (yaml/toml/reader/tool→mcp)
-  store/       bun:sqlite BackpackStore (save/load/list/remove/clear)
-index.ts       runnable demo: define → emit → import → save/load
+  core/            DOMAIN — zod schemas, defineBackpack, Adapter/Importer contracts
+  adapters/        DRIVEN — tool config emit + import, shared (yaml/toml/reader/tool→mcp)
+  store/           DRIVEN — bun:sqlite BackpackStore (implements CapabilityRepository)
+  application/     CORE — ports, DTOs, read-model (readable data), query + command services
+  infrastructure/  wiring — DiskWorkspaceGateway + WorkspaceRegistry (opens a store per folder)
+  http/            DRIVING — pure router(req)→Response + createBackpackServer (Bun.serve)
+index.ts           library demo: define → emit → import → save/load
+server.ts          HTTP entrypoint
 ```
+
+The **application layer is transport-agnostic**: the HTTP router and the planned CLI are
+both driving adapters over the same `BackpackService` (commands) and `BackpackQueryService`
+(reads). The read layer (`application/read-model.ts`) projects raw SQLite rows into readable
+DTOs. `application` depends only on ports; `store`/`infrastructure`/`http` depend on
+`application` — never the reverse.

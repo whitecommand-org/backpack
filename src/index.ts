@@ -3,12 +3,16 @@ import { homedir } from "node:os";
 import type { Adapter, EmitResult, EmittedFile, Diagnostic } from "./core/adapter.ts";
 import type { Backpack } from "./core/index.ts";
 import { defineBackpack } from "./core/index.ts";
-import type { Importer, SourceReader, ImportedCapabilities } from "./core/importer.ts";
+import type { Importer, SourceReader } from "./core/importer.ts";
+import { mergeImported } from "./core/importer.ts";
 import { DiskReader } from "./adapters/shared/index.ts";
 
 export * from "./core/index.ts";
 export * from "./adapters/index.ts";
 export * from "./store/sqlite.ts";
+export * from "./application/index.ts";
+export * from "./infrastructure/index.ts";
+export * from "./http/index.ts";
 
 /** Run several adapters over one backpack, keyed by adapter id. */
 export function emit(
@@ -38,61 +42,16 @@ export async function writeFiles(
   return written;
 }
 
-const IMPORT_KINDS = [
-  "mcpServers",
-  "agents",
-  "hooks",
-  "skills",
-  "commands",
-] as const satisfies readonly (keyof ImportedCapabilities)[];
-
 /**
- * Import existing configs into one validated `Backpack`. Runs every importer over
- * every reader and merges capabilities by id per kind (first-wins; a differing
- * duplicate id is skipped with a warning).
+ * Import existing configs into one validated `Backpack`. Merges capabilities by
+ * id per kind (see `mergeImported`) and validates the result.
  */
 export async function importBackpack(
   importers: Importer[],
   readers: SourceReader[],
 ): Promise<{ backpack: Backpack; diagnostics: Diagnostic[] }> {
-  const diagnostics: Diagnostic[] = [];
-  const byKind = new Map<string, Map<string, { id: string }>>(
-    IMPORT_KINDS.map((k) => [k, new Map()]),
-  );
-
-  for (const reader of readers) {
-    for (const importer of importers) {
-      const result = await importer.import(reader);
-      diagnostics.push(...result.diagnostics);
-      for (const kind of IMPORT_KINDS) {
-        const caps = (result.capabilities[kind] ?? []) as { id: string }[];
-        const map = byKind.get(kind)!;
-        for (const cap of caps) {
-          const existing = map.get(cap.id);
-          if (existing) {
-            if (JSON.stringify(existing) !== JSON.stringify(cap)) {
-              diagnostics.push({
-                level: "warn",
-                capabilityId: cap.id,
-                message: `Duplicate ${kind} id "${cap.id}" from ${importer.id}@${reader.label} ignored (kept first).`,
-              });
-            }
-            continue;
-          }
-          map.set(cap.id, cap);
-        }
-      }
-    }
-  }
-
-  const collect = (kind: string) => [...byKind.get(kind)!.values()];
-  const backpack = defineBackpack({
-    mcpServers: collect("mcpServers") as Backpack["mcpServers"],
-    agents: collect("agents") as Backpack["agents"],
-    hooks: collect("hooks") as Backpack["hooks"],
-    skills: collect("skills") as Backpack["skills"],
-    commands: collect("commands") as Backpack["commands"],
-  });
+  const { capabilities, diagnostics } = await mergeImported(importers, readers);
+  const backpack = defineBackpack(capabilities as Parameters<typeof defineBackpack>[0]);
   return { backpack, diagnostics };
 }
 

@@ -2,6 +2,11 @@
   "name": "backpack",
   "module": "index.ts",
   "type": "module",
+  "scripts": {
+    "serve": "bun server.ts",
+    "demo": "bun run index.ts",
+    "test": "bun test"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },

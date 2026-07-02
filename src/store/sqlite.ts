@@ -1,37 +1,23 @@
 import { Database } from "bun:sqlite";
 import type { Backpack, Tool, Diagnostic } from "../core/index.ts";
 import { defineBackpack, toJsonSchema } from "../core/index.ts";
+import type {
+  CapabilityKind,
+  CapabilityRow,
+  CapabilityRepository,
+  LoadOptions,
+} from "../application/ports.ts";
+import { CAPABILITY_KINDS } from "../application/ports.ts";
 
-/** The six capability collections, as stored `kind` values. */
-export type CapabilityKind =
-  | "mcpServers"
-  | "tools"
-  | "agents"
-  | "hooks"
-  | "skills"
-  | "commands";
-
-const KINDS: CapabilityKind[] = [
-  "mcpServers",
-  "tools",
-  "agents",
-  "hooks",
-  "skills",
-  "commands",
-];
-
+const KINDS = CAPABILITY_KINDS;
 const SCHEMA_VERSION = "1";
 
-export interface CapabilityRow {
+/** Metadata-only row returned by `list()`. */
+export interface CapabilitySummaryRow {
   kind: CapabilityKind;
   id: string;
   name: string;
   description: string;
-}
-
-export interface LoadOptions {
-  /** Handlers to re-attach to reloaded tools, keyed by tool id. */
-  toolHandlers?: Record<string, Tool["handler"]>;
 }
 
 /**
@@ -39,8 +25,9 @@ export interface LoadOptions {
  * in a generic `capabilities` table (its JSON in `data`). Tools are stored as
  * metadata + JSON-Schema `parameters`; their live `handler` cannot be serialized,
  * so `load({ toolHandlers })` re-binds it (unbound tools get a throwing stub).
+ * Implements the application's `CapabilityRepository` driven port.
  */
-export class BackpackStore {
+export class BackpackStore implements CapabilityRepository {
   private readonly db: Database;
 
   constructor(db: string | Database = ":memory:") {
@@ -145,12 +132,57 @@ export class BackpackStore {
   }
 
   /** List stored capability metadata, optionally filtered by kind. */
-  list(kind?: CapabilityKind): CapabilityRow[] {
+  list(kind?: CapabilityKind): CapabilitySummaryRow[] {
     const sql = kind
       ? `SELECT kind, id, name, description FROM capabilities WHERE kind = ? ORDER BY kind, id`
       : `SELECT kind, id, name, description FROM capabilities ORDER BY kind, id`;
     const query = this.db.query(sql);
+    return (kind ? query.all(kind) : query.all()) as CapabilitySummaryRow[];
+  }
+
+  /** All rows (including `data` JSON), optionally filtered by kind. */
+  allRows(kind?: CapabilityKind): CapabilityRow[] {
+    const sql = kind
+      ? `SELECT kind, id, name, description, data, updated_at AS updatedAt
+         FROM capabilities WHERE kind = ? ORDER BY kind, id`
+      : `SELECT kind, id, name, description, data, updated_at AS updatedAt
+         FROM capabilities ORDER BY kind, id`;
+    const query = this.db.query(sql);
     return (kind ? query.all(kind) : query.all()) as CapabilityRow[];
+  }
+
+  /** A single row (including `data` JSON), or null when absent. */
+  getRow(kind: CapabilityKind, id: string): CapabilityRow | null {
+    return (
+      (this.db
+        .query(
+          `SELECT kind, id, name, description, data, updated_at AS updatedAt
+           FROM capabilities WHERE kind = ? AND id = ?`,
+        )
+        .get(kind, id) as CapabilityRow | null) ?? null
+    );
+  }
+
+  /** Insert or replace a single capability row (its JSON already serialized). */
+  upsertRow(row: Omit<CapabilityRow, "updatedAt">): void {
+    this.db
+      .query(
+        `INSERT INTO capabilities (kind, id, name, description, data, updated_at)
+         VALUES ($kind, $id, $name, $description, $data, $updatedAt)
+         ON CONFLICT(kind, id) DO UPDATE SET
+           name = excluded.name,
+           description = excluded.description,
+           data = excluded.data,
+           updated_at = excluded.updated_at`,
+      )
+      .run({
+        $kind: row.kind,
+        $id: row.id,
+        $name: row.name,
+        $description: row.description,
+        $data: row.data,
+        $updatedAt: Date.now(),
+      });
   }
 
   remove(kind: CapabilityKind, id: string): void {
