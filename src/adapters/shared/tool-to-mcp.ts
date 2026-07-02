@@ -1,5 +1,5 @@
-import { z } from "zod";
 import type { Tool, McpServer } from "../../core/index.ts";
+import { toJsonSchema } from "../../core/index.ts";
 import type { EmittedFile } from "../../core/adapter.ts";
 
 export interface MaterializeOptions {
@@ -42,7 +42,7 @@ export function materializeTools(
   const defs: ToolDef[] = tools.map((tool) => ({
     name: tool.id,
     description: tool.description,
-    inputSchema: z.toJSONSchema(tool.parameters as z.ZodType),
+    inputSchema: toJsonSchema(tool.parameters),
   }));
 
   const file: EmittedFile = {

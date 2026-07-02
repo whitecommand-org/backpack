@@ -1,6 +1,5 @@
 import { test, expect } from "bun:test";
 import { z } from "zod";
-import { parse as parseToml } from "@iarna/toml";
 import {
   defineBackpack,
   claudeCodeAdapter,
@@ -112,7 +111,7 @@ test("claude-code emits valid config files", () => {
 test("codex emits parseable TOML with warnings for agents/skills", () => {
   const { files, diagnostics } = codexAdapter().emit(fixture());
   const map = fileMap(files);
-  const toml = parseToml(map.get(".codex/config.toml")!) as any;
+  const toml = Bun.TOML.parse(map.get(".codex/config.toml")!) as any;
 
   expect(toml.mcp_servers.db.command).toBe("npx");
   expect(toml.mcp_servers["backpack-tools"].command).toBe("bun");

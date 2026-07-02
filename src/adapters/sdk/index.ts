@@ -1,4 +1,3 @@
-import { z } from "zod";
 import type {
   Backpack,
   Tool,
@@ -7,6 +6,7 @@ import type {
   McpServer,
   ToolResult,
 } from "../../core/index.ts";
+import { toJsonSchema } from "../../core/index.ts";
 
 /**
  * A tool bound for in-process execution: JSON-Schema for the model, live handler
@@ -59,7 +59,7 @@ function toSdkTool(tool: Tool): SdkTool {
   return {
     name: tool.id,
     description: tool.description,
-    inputSchema: z.toJSONSchema(tool.parameters as z.ZodType),
+    inputSchema: toJsonSchema(tool.parameters),
     handler: tool.handler,
   };
 }

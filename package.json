@@ -3,7 +3,6 @@
   "module": "index.ts",
   "type": "module",
   "devDependencies": {
-    "@iarna/toml": "^2.2.5",
     "@types/bun": "latest"
   },
   "peerDependencies": {

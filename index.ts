@@ -5,7 +5,11 @@ import {
   claudeCodeAdapter,
   codexAdapter,
   copilotCliAdapter,
+  claudeCodeImporter,
+  importBackpack,
   toSdkBindings,
+  BackpackStore,
+  MemoryReader,
   type Tool,
 } from "./src/index.ts";
 
@@ -91,3 +95,19 @@ for (const [tool, result] of Object.entries(results)) {
 // SDK path keeps handlers live in-memory.
 const sdk = toSdkBindings(backpack);
 console.log(`\n# sdk\n  ${sdk.tools.length} tool(s), ${sdk.agents.length} agent(s), ${sdk.hooks.length} hook(s) bound in-process`);
+
+// Round-trip: import the Claude Code output back into a Backpack, persist it to
+// SQLite, then reload it — the backpack as a durable, tool-agnostic store.
+const emittedFiles = results["claude-code"]!.files;
+const reader = new MemoryReader(
+  Object.fromEntries(emittedFiles.map((f) => [f.path, f.content])),
+);
+const imported = await importBackpack([claudeCodeImporter()], [reader]);
+console.log(`\n# import (from claude-code output)`);
+console.log(`  ${imported.backpack.mcpServers.length} mcpServer(s), ${imported.backpack.agents.length} agent(s), ${imported.backpack.commands.length} command(s), ${imported.backpack.hooks.length} hook(s)`);
+
+const store = new BackpackStore(":memory:").init();
+store.save(imported.backpack);
+const reloaded = store.load();
+console.log(`\n# sqlite (save → load)`);
+console.log(`  stored kinds: ${store.list().length} row(s); reloaded ${reloaded.backpack.agents.length} agent(s)`);

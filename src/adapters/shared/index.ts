@@ -5,6 +5,31 @@ import { materializeTools } from "./tool-to-mcp.ts";
 export * from "./yaml.ts";
 export * from "./toml.ts";
 export * from "./tool-to-mcp.ts";
+export * from "./reader.ts";
+export * from "./frontmatter.ts";
+
+/** Convert an arbitrary config key/filename into a valid kebab-case capability id. */
+export function slugify(value: string): string {
+  return (
+    value
+      .replace(/\.[^.]+$/, "") // drop file extension
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+      .toLowerCase()
+      .replace(/^-+|-+$/g, "") || "item"
+  );
+}
+
+/** True for a materialized backpack tools-server, so importers can skip it. */
+export function isGeneratedToolServer(server: McpServer): boolean {
+  const c = server.connection;
+  return (
+    c.type === "stdio" &&
+    c.args.some((a) => a.includes(".backpack/mcp/"))
+  );
+}
+
+export * from "./import-common.ts";
 
 /** Default module the generated tools server imports handlers from. */
 export const DEFAULT_TOOLS_MODULE = "../../index.ts";
