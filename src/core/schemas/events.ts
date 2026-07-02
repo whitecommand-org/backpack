@@ -17,11 +17,14 @@ export const HOOK_EVENTS = [
   "UserPromptSubmit",
   "PreToolUse",
   "PostToolUse",
+  "PostToolUseFailure",
+  "Notification",
   "Stop",
   "PreCompact",
   "PostCompact",
   "SubagentStart",
   "SubagentStop",
+  "TaskCompleted",
 ] as const;
 
 export const HookEvent = z.enum(HOOK_EVENTS);

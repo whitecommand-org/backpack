@@ -44,7 +44,7 @@ export function copilotCliImporter(): Importer {
       // .github/agents/*.md
       for (const path of await reader.list(".github/agents", "*.md")) {
         const md = await reader.read(path);
-        if (md) agents.push(agentFromMarkdown(path, md));
+        if (md) agents.push(agentFromMarkdown(path, md, reader.label, diagnostics));
       }
 
       // .copilot/settings.json → hooks
@@ -60,8 +60,20 @@ export function copilotCliImporter(): Importer {
   };
 }
 
-function agentFromMarkdown(path: string, md: string): Agent {
-  const { data, body } = parseFrontmatter(md);
+function agentFromMarkdown(
+  path: string,
+  md: string,
+  label: string,
+  diagnostics: Diagnostic[],
+): Agent {
+  const { data, body, error } = parseFrontmatter(md);
+  if (error) {
+    diagnostics.push({
+      level: "warn",
+      capabilityId: "backpack",
+      message: `${label}: ignored invalid frontmatter in ${path} (${error}).`,
+    });
+  }
   const id = slugify(String(data.name ?? path.split("/").pop() ?? path));
   return {
     id,

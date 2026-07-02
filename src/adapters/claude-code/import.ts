@@ -45,19 +45,19 @@ export function claudeCodeImporter(): Importer {
       // .claude/agents/*.md
       for (const path of await reader.list(".claude/agents", "*.md")) {
         const md = await reader.read(path);
-        if (md) agents.push(agentFromMarkdown(path, md));
+        if (md) agents.push(agentFromMarkdown(path, md, reader.label, diagnostics));
       }
 
       // .claude/skills/*/SKILL.md
       for (const path of await reader.list(".claude/skills", "*/SKILL.md")) {
         const md = await reader.read(path);
-        if (md) skills.push(skillFromMarkdown(path, md));
+        if (md) skills.push(skillFromMarkdown(path, md, reader.label, diagnostics));
       }
 
       // .claude/commands/*.md
       for (const path of await reader.list(".claude/commands", "*.md")) {
         const md = await reader.read(path);
-        if (md) commands.push(commandFromMarkdown(path, md));
+        if (md) commands.push(commandFromMarkdown(path, md, reader.label, diagnostics));
       }
 
       // .claude/settings.json → hooks
@@ -83,8 +83,29 @@ function baseId(path: string): string {
   return slugify(path.split("/").pop() ?? path);
 }
 
-function agentFromMarkdown(path: string, md: string): Agent {
-  const { data, body } = parseFrontmatter(md);
+/** Warn (once) when a file's frontmatter block was present but unparseable. */
+function reportFrontmatterError(
+  path: string,
+  error: string | undefined,
+  label: string,
+  diagnostics: Diagnostic[],
+): void {
+  if (!error) return;
+  diagnostics.push({
+    level: "warn",
+    capabilityId: "backpack",
+    message: `${label}: ignored invalid frontmatter in ${path} (${error}).`,
+  });
+}
+
+function agentFromMarkdown(
+  path: string,
+  md: string,
+  label: string,
+  diagnostics: Diagnostic[],
+): Agent {
+  const { data, body, error } = parseFrontmatter(md);
+  reportFrontmatterError(path, error, label, diagnostics);
   const id = slugify(String(data.name ?? baseId(path)));
   return {
     id,
@@ -97,8 +118,14 @@ function agentFromMarkdown(path: string, md: string): Agent {
   };
 }
 
-function skillFromMarkdown(path: string, md: string): Skill {
-  const { data, body } = parseFrontmatter(md);
+function skillFromMarkdown(
+  path: string,
+  md: string,
+  label: string,
+  diagnostics: Diagnostic[],
+): Skill {
+  const { data, body, error } = parseFrontmatter(md);
+  reportFrontmatterError(path, error, label, diagnostics);
   // Directory name (…/skills/<id>/SKILL.md) is the canonical id.
   const dir = path.split("/").at(-2);
   const id = slugify(String(data.name ?? dir ?? baseId(path)));
@@ -119,8 +146,14 @@ function skillFromMarkdown(path: string, md: string): Skill {
   };
 }
 
-function commandFromMarkdown(path: string, md: string): Command {
-  const { data, body } = parseFrontmatter(md);
+function commandFromMarkdown(
+  path: string,
+  md: string,
+  label: string,
+  diagnostics: Diagnostic[],
+): Command {
+  const { data, body, error } = parseFrontmatter(md);
+  reportFrontmatterError(path, error, label, diagnostics);
   const id = baseId(path);
   const args = argumentsFromHint(data["argument-hint"]);
   return {

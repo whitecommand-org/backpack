@@ -97,6 +97,42 @@ test("claude-code round-trips through emit → import", async () => {
   expect(hook.handler.command).toBe("./guard.sh");
 });
 
+test("claude-code import recovers metadata from strict-YAML-invalid frontmatter", async () => {
+  // Real-world agent files have unquoted single-line descriptions containing
+  // colons and quotes that Bun's strict YAML parser rejects. The lenient flat
+  // fallback must recover name/description/model without a warning.
+  const strictInvalid = [
+    "---",
+    "name: strategist",
+    "description: Use this agent when: it's 'tricky' <example>x: y</example>",
+    "model: sonnet",
+    "---",
+    "System prompt body.",
+  ].join("\n");
+  const r = new MemoryReader({ ".claude/agents/strategist.md": strictInvalid });
+
+  const { capabilities, diagnostics } = await claudeCodeImporter().import(r);
+
+  const agent = capabilities.agents?.[0]!;
+  expect(agent.id).toBe("strategist");
+  expect(agent.description).toBe("Use this agent when: it's 'tricky' <example>x: y</example>");
+  expect(agent.model).toBe("sonnet");
+  expect(agent.systemPrompt).toBe("System prompt body.");
+  expect(diagnostics.some((d) => /invalid frontmatter/.test(d.message))).toBe(false);
+});
+
+test("claude-code import warns only when frontmatter yields nothing", async () => {
+  // A genuinely unrecoverable frontmatter block (no key/value lines) still warns
+  // and falls back to the filename-derived id.
+  const garbage = ["---", "\t: [ : ] : {", "---", "Body."].join("\n");
+  const r = new MemoryReader({ ".claude/agents/garbage.md": garbage });
+
+  const { capabilities, diagnostics } = await claudeCodeImporter().import(r);
+
+  expect(capabilities.agents?.[0]!.id).toBe("garbage");
+  expect(diagnostics.some((d) => /invalid frontmatter in .*garbage\.md/.test(d.message))).toBe(true);
+});
+
 test("codex import recovers servers, agents (lossy) and prompts", async () => {
   const { files } = codexAdapter().emit(fixture());
   const { capabilities, diagnostics } = await codexImporter().import(reader(files));
