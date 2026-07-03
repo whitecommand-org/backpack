@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   run,
   WorkspaceRegistry,
+  WorkspaceCatalog,
   defineBackpack,
   claudeCodeAdapter,
   writeFiles,
@@ -14,6 +15,8 @@ import {
 async function ctx(stdin = "") {
   const dir = await mkdtemp(join(tmpdir(), "backpack-cli-"));
   const registry = new WorkspaceRegistry();
+  // Isolated catalog so tests never touch the real ~/.backpack/workspaces.json.
+  const catalog = new WorkspaceCatalog(join(dir, "catalog.json"));
   let out = "";
   let err = "";
   const io: CliIO = {
@@ -21,10 +24,12 @@ async function ctx(stdin = "") {
     err: (t) => (err += t + "\n"),
     readStdin: async () => stdin,
   };
-  const call = (...argv: string[]) => run([...argv, "--dir", dir], { io, registry });
+  const call = (...argv: string[]) =>
+    run([...argv, "--dir", dir], { io, registry, catalog });
   return {
     dir,
     call,
+    catalog,
     get out() {
       return out;
     },
@@ -103,6 +108,20 @@ test("import from folder configs then export --write", async () => {
 
   expect(await c.call("export", "codex", "--write")).toBe(0);
   expect(await Bun.file(join(c.dir, ".codex/config.toml")).exists()).toBe(true);
+});
+
+test("populating a folder registers it in the (isolated) catalog", async () => {
+  const c = await ctx();
+  expect(await c.catalog.list()).toHaveLength(0);
+
+  await c.call("add", "agents", "--data", agentJson);
+  const entries = await c.catalog.list();
+  expect(entries.map((e) => e.dir)).toEqual([c.dir]);
+
+  // A failed mutation (tools are read-only) must NOT register the folder.
+  const c2 = await ctx();
+  await c2.call("add", "tools", "--data", '{"id":"t"}');
+  expect(await c2.catalog.list()).toHaveLength(0);
 });
 
 test("errors: read-only tools, unknown kind, unknown command", async () => {

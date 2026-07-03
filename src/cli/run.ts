@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { WorkspaceRegistry } from "../infrastructure/index.ts";
+import { WorkspaceRegistry, WorkspaceCatalog } from "../infrastructure/index.ts";
 import {
   ApplicationError,
   isCapabilityKind,
@@ -19,6 +19,7 @@ import {
 export interface RunOptions {
   io?: CliIO;
   registry?: WorkspaceRegistry;
+  catalog?: WorkspaceCatalog;
 }
 
 const USAGE = `backpack — manage AI coding-agent capabilities in a folder
@@ -53,6 +54,7 @@ Kinds: mcpServers, tools, agents, hooks, skills, commands (tools are read-only)`
 export async function run(argv: string[], opts: RunOptions = {}): Promise<number> {
   const io = opts.io ?? realIo;
   const registry = opts.registry ?? new WorkspaceRegistry();
+  const catalog = opts.catalog ?? new WorkspaceCatalog();
 
   let parsed;
   try {
@@ -91,7 +93,7 @@ export async function run(argv: string[], opts: RunOptions = {}): Promise<number
   }
 
   try {
-    return await dispatch(command, rest, values, { io, registry });
+    return await dispatch(command, rest, values, { io, registry, catalog });
   } catch (err) {
     if (err instanceof ApplicationError) {
       io.err(`error (${err.code}): ${err.message}`);
@@ -109,9 +111,9 @@ async function dispatch(
   command: string,
   args: string[],
   values: Values,
-  ctx: { io: CliIO; registry: WorkspaceRegistry },
+  ctx: { io: CliIO; registry: WorkspaceRegistry; catalog: WorkspaceCatalog },
 ): Promise<number> {
-  const { io, registry } = ctx;
+  const { io, registry, catalog } = ctx;
   const json = values.json === true;
   const dir = typeof values.dir === "string" ? values.dir : process.cwd();
   const ws = () => registry.open(dir);
@@ -121,7 +123,7 @@ async function dispatch(
       const port = values.port ? Number(values.port) : undefined;
       // Dynamic import so the HTML/React bundle graph only loads for `serve`.
       const { createWebServer } = await import("../web/server.ts");
-      const server = createWebServer({ port, registry });
+      const server = createWebServer({ port, registry, catalog });
       io.out(`backpack UI + API on http://localhost:${server.port}`);
       return new Promise<number>(() => {}); // keep the process alive
     }
@@ -162,6 +164,7 @@ async function dispatch(
       const kind = requireKind(need(args[0], "kind"));
       const input = await readJsonInput(values, io);
       const detail = ws().commands.create(kind, input);
+      await catalog.add(dir);
       io.out(json ? stringify(detail) : formatDetail(detail));
       return 0;
     }
@@ -171,6 +174,7 @@ async function dispatch(
       const id = need(args[1], "id");
       const input = await readJsonInput(values, io);
       const detail = ws().commands.update(kind, id, input);
+      await catalog.add(dir);
       io.out(json ? stringify(detail) : formatDetail(detail));
       return 0;
     }
@@ -189,6 +193,9 @@ async function dispatch(
           ? values.targets.split(",").map((t) => t.trim()).filter(Boolean)
           : undefined;
       const result = await ws().commands.importFromConfigs({ targets });
+      // Commands that populate a folder (add/set/import) register it as a known
+      // workspace so it surfaces in the web UI.
+      await catalog.add(dir);
       io.out(json ? stringify(result) : formatImport(result));
       return 0;
     }
