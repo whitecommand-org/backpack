@@ -5,7 +5,6 @@ import {
   isCapabilityKind,
   type CapabilityKind,
 } from "../application/index.ts";
-import { createBackpackServer } from "../http/server.ts";
 import {
   realIo,
   formatOverview,
@@ -120,8 +119,10 @@ async function dispatch(
   switch (command) {
     case "serve": {
       const port = values.port ? Number(values.port) : undefined;
-      const server = createBackpackServer({ port, registry });
-      io.out(`backpack API listening on http://localhost:${server.port}`);
+      // Dynamic import so the HTML/React bundle graph only loads for `serve`.
+      const { createWebServer } = await import("../web/server.ts");
+      const server = createWebServer({ port, registry });
+      io.out(`backpack UI + API on http://localhost:${server.port}`);
       return new Promise<number>(() => {}); // keep the process alive
     }
 

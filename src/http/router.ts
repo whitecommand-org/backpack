@@ -1,4 +1,4 @@
-import type { WorkspaceRegistry } from "../infrastructure/index.ts";
+import type { WorkspaceRegistry, WorkspaceCatalog } from "../infrastructure/index.ts";
 import {
   ApplicationError,
   isCapabilityKind,
@@ -11,21 +11,27 @@ type Body = Record<string, unknown>;
 /**
  * A pure request handler for the backpack HTTP API. Returned as a plain function
  * so it can be unit-tested with `Request`/`Response` and also handed to
- * `Bun.serve({ fetch })`. Multi-workspace: every request names its folder.
+ * `Bun.serve({ fetch })`. Multi-workspace: every request names its folder. An
+ * optional `catalog` enables the `/workspaces` management routes.
  */
 export function router(
   registry: WorkspaceRegistry,
+  catalog?: WorkspaceCatalog,
 ): (req: Request) => Promise<Response> {
   return async (req) => {
     try {
-      return await handle(registry, req);
+      return await handle(registry, catalog, req);
     } catch (err) {
       return errorResponse(err);
     }
   };
 }
 
-async function handle(registry: WorkspaceRegistry, req: Request): Promise<Response> {
+async function handle(
+  registry: WorkspaceRegistry,
+  catalog: WorkspaceCatalog | undefined,
+  req: Request,
+): Promise<Response> {
   const url = new URL(req.url);
   const segs = url.pathname.split("/").filter(Boolean);
   const method = req.method.toUpperCase();
@@ -34,6 +40,10 @@ async function handle(registry: WorkspaceRegistry, req: Request): Promise<Respon
   if (method === "GET" && segs[0] === "health") return json({ ok: true });
   if (method === "GET" && segs[0] === "targets")
     return json({ targets: registry.targets() });
+
+  if (segs[0] === "workspaces") {
+    return handleWorkspaces(registry, requireCatalog(catalog), method, url, body);
+  }
 
   // All remaining routes operate on a workspace folder.
   const ws = () => registry.open(resolveDir(req, url, body));
@@ -61,6 +71,11 @@ async function handle(registry: WorkspaceRegistry, req: Request): Promise<Respon
       const kind = requireKind(segs[1]!);
       const id = segs[2]!;
       if (method === "GET") {
+        if (url.searchParams.get("raw")) {
+          const raw = workspace.query.raw(kind, id);
+          if (!raw) throw new ApplicationError("not_found", `${kind} "${id}" not found.`);
+          return json(raw);
+        }
         const detail = workspace.query.get(kind, id);
         if (!detail) throw new ApplicationError("not_found", `${kind} "${id}" not found.`);
         return json(detail);
@@ -87,6 +102,44 @@ async function handle(registry: WorkspaceRegistry, req: Request): Promise<Respon
   }
 
   throw new ApplicationError("not_found", `No route for ${method} ${url.pathname}`);
+}
+
+async function handleWorkspaces(
+  registry: WorkspaceRegistry,
+  catalog: WorkspaceCatalog,
+  method: string,
+  url: URL,
+  body: Body,
+): Promise<Response> {
+  const enrich = (entry: { dir: string; name: string; addedAt: number }) => {
+    const o = registry.open(entry.dir).query.overview();
+    return { ...entry, total: o.total, byKind: o.byKind };
+  };
+
+  if (method === "GET") {
+    const entries = await catalog.list();
+    return json({ workspaces: entries.map(enrich) });
+  }
+  if (method === "POST") {
+    if (typeof body.dir !== "string" || !body.dir)
+      throw new ApplicationError("bad_request", "Body must include a folder 'dir'.");
+    registry.open(body.dir); // validate: opens/creates the folder's store
+    const entry = await catalog.add(body.dir);
+    return json(enrich(entry), 201);
+  }
+  if (method === "DELETE") {
+    const dir = url.searchParams.get("dir") ?? (typeof body.dir === "string" ? body.dir : null);
+    if (!dir) throw new ApplicationError("bad_request", "Missing `dir` to remove.");
+    await catalog.remove(dir);
+    return new Response(null, { status: 204 });
+  }
+  throw new ApplicationError("not_found", `No route for ${method} /workspaces`);
+}
+
+function requireCatalog(catalog: WorkspaceCatalog | undefined): WorkspaceCatalog {
+  if (!catalog)
+    throw new ApplicationError("bad_request", "Workspace management is not enabled on this server.");
+  return catalog;
 }
 
 function resolveDir(req: Request, url: URL, body: Body): string {

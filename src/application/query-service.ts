@@ -28,4 +28,15 @@ export class BackpackQueryService {
     const row = this.repo.getRow(kind, id);
     return row ? detailFromRow(row) : null;
   }
+
+  /** The raw stored capability JSON (for editing), or null when absent. */
+  raw(kind: CapabilityKind, id: string): Record<string, unknown> | null {
+    const row = this.repo.getRow(kind, id);
+    if (!row) return null;
+    try {
+      return JSON.parse(row.data) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
 }

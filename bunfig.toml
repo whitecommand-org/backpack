@@ -1,0 +1,3 @@
+# Enable Tailwind v4 processing for HTML/CSS served by Bun.serve.
+[serve.static]
+plugins = ["bun-plugin-tailwind"]

@@ -1,9 +1,8 @@
-import { createBackpackServer } from "./src/index.ts";
+import { createWebServer } from "./src/web/server.ts";
 
-// Start the multi-workspace backpack HTTP API. Each request names its folder via
-// the `dir` body field, `?dir=`, or an `X-Backpack-Dir` header. No auth.
+// Start the backpack web UI + multi-workspace JSON API. UI at `/`, API under
+// `/api/*`. Workspaces are managed via `/api/workspaces`. No auth.
 const port = Number(process.env.PORT ?? 4000);
-const server = createBackpackServer({ port });
+const server = createWebServer({ port });
 
-console.log(`backpack API listening on http://localhost:${server.port}`);
-console.log("Try: curl -H 'X-Backpack-Dir: .' http://localhost:" + server.port + "/overview");
+console.log(`backpack UI + API on http://localhost:${server.port}`);

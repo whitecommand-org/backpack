@@ -144,6 +144,24 @@ curl -H 'X-Backpack-Dir: /path/to/project' localhost:4000/capabilities
 Tools are **read-only** over HTTP (a handler can't be sent as JSON). Errors are
 `{ error: { code, message, details? } }` (400/404/409/422).
 
+## Web UI
+
+`bun server.ts` (or `bun cli.ts serve`) starts a black-on-white, monochrome web console
+modeled on [whitecommand.com](https://whitecommand.com) — React + Tailwind v4 served by
+`Bun.serve` (HTML imports, no vite). It serves the app at `/` and the JSON API under
+`/api/*`.
+
+- **Workspaces** are tracked in a server-side registry (`~/.backpack/workspaces.json`, via
+  `/api/workspaces`). Add one by typing a folder path; switch between them in the left rail.
+- **Overview** shows one stat card per kind; **Capabilities** lists readable rows with a
+  filter/search and a detail drawer; create/edit uses **guided per-kind forms** with a raw-JSON
+  fallback (tools are read-only). **Import / Export** run against the active folder with
+  terminal-styled output.
+
+```bash
+bun server.ts          # http://localhost:4000
+```
+
 ## CLI
 
 `bun cli.ts <command>` (or `backpack` once installed) operates on one folder — `--dir`,
@@ -176,10 +194,11 @@ src/
   store/           DRIVEN — bun:sqlite BackpackStore (implements CapabilityRepository)
   application/     CORE — ports, DTOs, read-model (readable data), query + command services
   infrastructure/  wiring — DiskWorkspaceGateway + WorkspaceRegistry (opens a store per folder)
-  http/            DRIVING — pure router(req)→Response + createBackpackServer (Bun.serve)
+  http/            DRIVING — pure router(req)→Response (+ /api/workspaces)
   cli/             DRIVING — pure run(argv,io)→exit code
+  web/             DRIVING — React + Tailwind v4 UI + createWebServer (Bun.serve)
 index.ts           library demo: define → emit → import → save/load
-server.ts          HTTP entrypoint · cli.ts  CLI entrypoint
+server.ts          web+API entrypoint · cli.ts  CLI entrypoint
 ```
 
 The **application layer is transport-agnostic**: the HTTP router and the CLI are both
