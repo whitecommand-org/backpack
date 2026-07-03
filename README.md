@@ -13,11 +13,20 @@ bun test
 
 ## Install the CLI
 
-**Standalone binary (no Bun required)** — download the asset for your platform from the
-[latest release](https://github.com/whitecommand-org/backpack/releases/latest), then:
+**Standalone binary (no Bun required)** — one-line installer (auto-detects OS/arch, verifies the
+checksum, installs to `/usr/local/bin`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/whitecommand-org/backpack/main/install.sh | sh
+```
+
+Options: `BACKPACK_VERSION=v0.1.1` to pin a version, `BACKPACK_INSTALL_DIR=$HOME/.local/bin` to
+change the location. Or grab a binary manually from the
+[latest release](https://github.com/whitecommand-org/backpack/releases/latest):
 
 ```bash
 chmod +x backpack-darwin-arm64 && mv backpack-darwin-arm64 /usr/local/bin/backpack
+xattr -d com.apple.quarantine /usr/local/bin/backpack   # macOS only (unsigned binary)
 backpack --version
 ```
 
