@@ -123,3 +123,53 @@ test("targets lists exporter support matrix without a folder", async () => {
     "copilot-cli",
   ]);
 });
+
+// Mirrors the running web server: the API is mounted at /api and the ORIGINAL
+// request flows through the router (no rebuilding). This is the path that used to
+// drop the POST body and silently no-op /export.
+test("router under /api base path preserves the POST body (export writes to disk)", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "backpack-api-"));
+  const handle = router(new WorkspaceRegistry(), undefined, { basePath: "/api" });
+
+  async function apiCall(method: string, path: string, body?: unknown) {
+    const res = await handle(
+      new Request(`http://localhost:4000${path}`, {
+        method,
+        headers: {
+          "x-backpack-dir": dir,
+          ...(body !== undefined ? { "content-type": "application/json" } : {}),
+        },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      }),
+    );
+    const text = await res.text();
+    return { status: res.status, json: text ? JSON.parse(text) : null };
+  }
+
+  // POST body is read → capability is created (201).
+  const created = await apiCall("POST", "/api/capabilities/agents", {
+    id: "reviewer",
+    name: "Reviewer",
+    description: "Reviews",
+    systemPrompt: "Be terse.",
+  });
+  expect(created.status).toBe(201);
+
+  // POST /api/export with write:true actually writes the file.
+  const exported = await apiCall("POST", "/api/export", { target: "codex", write: true });
+  expect(exported.status).toBe(200);
+  expect(exported.json.written.some((p: string) => p.endsWith(".codex/config.toml"))).toBe(true);
+  expect(await Bun.file(join(dir, ".codex/config.toml")).exists()).toBe(true);
+});
+
+test("API rejects a relative dir with 400", async () => {
+  const handle = router(new WorkspaceRegistry(), undefined, { basePath: "/api" });
+  const res = await handle(
+    new Request("http://localhost:4000/api/overview", {
+      headers: { "x-backpack-dir": "relative/path" },
+    }),
+  );
+  expect(res.status).toBe(400);
+  const body = await res.json();
+  expect(body.error.message).toContain("absolute");
+});

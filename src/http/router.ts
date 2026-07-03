@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path";
 import type { WorkspaceRegistry, WorkspaceCatalog } from "../infrastructure/index.ts";
 import {
   ApplicationError,
@@ -8,19 +9,28 @@ import { json, errorResponse } from "./responses.ts";
 
 type Body = Record<string, unknown>;
 
+export interface RouterOptions {
+  /** Path prefix the API is mounted under (e.g. "/api"); stripped before matching. */
+  basePath?: string;
+}
+
 /**
  * A pure request handler for the backpack HTTP API. Returned as a plain function
  * so it can be unit-tested with `Request`/`Response` and also handed to
- * `Bun.serve({ fetch })`. Multi-workspace: every request names its folder. An
- * optional `catalog` enables the `/workspaces` management routes.
+ * `Bun.serve`. Multi-workspace: every request names its folder. An optional
+ * `catalog` enables the `/workspaces` management routes. When mounted under a
+ * prefix, pass `{ basePath }` so the original request (and its body) flow through
+ * untouched — no request rebuilding.
  */
 export function router(
   registry: WorkspaceRegistry,
   catalog?: WorkspaceCatalog,
+  opts: RouterOptions = {},
 ): (req: Request) => Promise<Response> {
+  const basePath = opts.basePath ?? "";
   return async (req) => {
     try {
-      return await handle(registry, catalog, req);
+      return await handle(registry, catalog, req, basePath);
     } catch (err) {
       return errorResponse(err);
     }
@@ -31,9 +41,14 @@ async function handle(
   registry: WorkspaceRegistry,
   catalog: WorkspaceCatalog | undefined,
   req: Request,
+  basePath: string,
 ): Promise<Response> {
   const url = new URL(req.url);
-  const segs = url.pathname.split("/").filter(Boolean);
+  let pathname = url.pathname;
+  if (basePath && pathname.startsWith(basePath)) {
+    pathname = pathname.slice(basePath.length) || "/";
+  }
+  const segs = pathname.split("/").filter(Boolean);
   const method = req.method.toUpperCase();
   const body: Body = method === "POST" || method === "PUT" ? await readBody(req) : {};
 
@@ -151,6 +166,12 @@ function resolveDir(req: Request, url: URL, body: Body): string {
     throw new ApplicationError(
       "bad_request",
       "Missing workspace folder. Provide `dir` in the body, `?dir=`, or an `X-Backpack-Dir` header.",
+    );
+  }
+  if (!isAbsolute(dir)) {
+    throw new ApplicationError(
+      "bad_request",
+      `\`dir\` must be an absolute path (got "${dir}"). Relative paths would resolve against the server's working directory.`,
     );
   }
   return dir;
