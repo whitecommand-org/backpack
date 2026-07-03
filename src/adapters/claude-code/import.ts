@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { Importer, SourceReader, ImportResult } from "../../core/importer.ts";
 import type { Diagnostic } from "../../core/adapter.ts";
 import type { McpServer, Agent, Skill, Command } from "../../core/index.ts";
@@ -11,8 +13,14 @@ import {
   argumentsFromHint,
 } from "../shared/index.ts";
 
+export interface ClaudeImporterOptions {
+  /** Path to the global Claude config. Defaults to `~/.claude.json`. */
+  globalClaudeJsonPath?: string;
+}
+
 /** Parses Claude Code project/user config back into portable capabilities. */
-export function claudeCodeImporter(): Importer {
+export function claudeCodeImporter(opts: ClaudeImporterOptions = {}): Importer {
+  const globalClaudeJsonPath = opts.globalClaudeJsonPath ?? join(homedir(), ".claude.json");
   return {
     id: "claude-code",
     displayName: "Claude Code",
@@ -50,11 +58,23 @@ export function claudeCodeImporter(): Importer {
 
       const claudeRaw = await reader.read(".claude.json");
       if (claudeRaw) {
+        // Importing a folder that has its own `.claude.json` (typically `~/`):
+        // take the top-level user servers plus this folder's project entry.
         const parsed = safeJson(claudeRaw, ".claude.json", diagnostics);
         addServers(parsed?.mcpServers, ".claude.json (user)");
         if (reader.root) {
           const projects = (parsed?.projects ?? {}) as Record<string, { mcpServers?: unknown }>;
           addServers(projects[reader.root]?.mcpServers, `.claude.json (${reader.root})`);
+        }
+      } else if (reader.root) {
+        // Importing a project folder: Claude keeps its MCP servers not in the
+        // folder but in the global `~/.claude.json` under `projects[<abs dir>]`.
+        // Pull just this folder's entry (not the user-global servers).
+        const globalRaw = await readJsonFile(globalClaudeJsonPath);
+        if (globalRaw) {
+          const parsed = safeJson(globalRaw, "~/.claude.json", diagnostics);
+          const projects = (parsed?.projects ?? {}) as Record<string, { mcpServers?: unknown }>;
+          addServers(projects[reader.root]?.mcpServers, `~/.claude.json (${reader.root})`);
         }
       }
 
@@ -184,6 +204,12 @@ function commandFromMarkdown(
       : {}),
     ...(typeof data.model === "string" ? { model: data.model } : {}),
   };
+}
+
+/** Read a JSON file's text, or null when absent. */
+async function readJsonFile(path: string): Promise<string | null> {
+  const file = Bun.file(path);
+  return (await file.exists()) ? file.text() : null;
 }
 
 function safeJson(

@@ -10,6 +10,7 @@ import {
   copilotCliImporter,
   importBackpack,
   MemoryReader,
+  DiskReader,
   type Tool,
   type EmittedFile,
 } from "../src/index.ts";
@@ -153,6 +154,33 @@ test("claude-code imports MCP servers from ~/.claude.json (user + project scope)
   expect(ids).toEqual(["context7", "notion", "playwright"]);
   const http = capabilities.mcpServers?.find((s) => s.id === "notion");
   expect(http?.connection.type).toBe("http");
+});
+
+test("claude-code imports a project folder's servers from the global ~/.claude.json", async () => {
+  // The folder itself has no `.claude.json`; its MCP servers live in the global
+  // config under projects[<abs dir>].
+  const { mkdtemp, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+
+  const projectDir = await mkdtemp(join(tmpdir(), "backpack-proj-"));
+  const globalPath = join(await mkdtemp(join(tmpdir(), "backpack-home-")), ".claude.json");
+  await writeFile(
+    globalPath,
+    JSON.stringify({
+      mcpServers: { userGlobal: { command: "x" } }, // user-scoped: must NOT be imported here
+      projects: {
+        [projectDir]: { mcpServers: { "jobei-mcp": { command: "npx", args: ["jobei"] } } },
+        "/somewhere/else": { mcpServers: { other: { command: "y" } } },
+      },
+    }),
+  );
+
+  const importer = claudeCodeImporter({ globalClaudeJsonPath: globalPath });
+  const { capabilities } = await importer.import(new DiskReader(projectDir, "project"));
+
+  // Only this folder's project-scoped server — not user-global, not other folders.
+  expect((capabilities.mcpServers ?? []).map((s) => s.id)).toEqual(["jobei-mcp"]);
 });
 
 test("codex import recovers servers, agents (lossy) and prompts", async () => {
