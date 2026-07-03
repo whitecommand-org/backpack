@@ -192,14 +192,28 @@ echo '{"id":"reviewer","name":"Reviewer","description":"Reviews diffs",
 bun cli.ts get agents reviewer
 bun cli.ts import                             # adopt the folder's existing tool configs
 bun cli.ts export codex --write               # write .codex/config.toml into the folder
+bun cli.ts bundle export --out backpack.json  # portable snapshot of the whole backpack
+bun cli.ts bundle import backpack.json        # load a bundle (add --replace to overwrite)
 bun cli.ts targets                            # export targets and their supported kinds
 bun cli.ts serve --port 4000                  # start the HTTP API
 ```
 
 Commands: `overview`, `list [kind]`, `get <kind> <id>`, `add <kind>`, `set <kind> <id>`,
-`rm <kind> <id>`, `import`, `export <target>`, `targets`, `serve`, `help`. Capability input
-for `add`/`set` is JSON via `--data`, `--file`, or stdin. Tools are read-only. Exit code is
-non-zero on error.
+`rm <kind> <id>`, `import`, `export <target>`, `bundle export|import`, `targets`, `serve`,
+`help`. Capability input for `add`/`set` is JSON via `--data`, `--file`, or stdin. Tools are
+read-only. Exit code is non-zero on error.
+
+### Portable bundle — move a backpack between machines
+
+`bundle export` writes the **whole backpack** to one JSON file (`{ format, version,
+capabilities }`); `bundle import` loads it into any workspace (merge by default, `--replace`
+to overwrite). Combined with `${HOME}` path portability, a bundle is machine-independent — no
+copying SQLite files or matching folder paths.
+
+```bash
+bun cli.ts bundle export --dir ~/projA --out backpack.json   # on machine A
+bun cli.ts bundle import backpack.json --dir ~/work/projA     # on machine B → paths expand locally on emit
+```
 
 ## Architecture (hexagonal)
 

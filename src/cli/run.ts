@@ -3,6 +3,8 @@ import { WorkspaceRegistry, WorkspaceCatalog } from "../infrastructure/index.ts"
 import {
   ApplicationError,
   isCapabilityKind,
+  exportBundle,
+  importBundle,
   type CapabilityKind,
 } from "../application/index.ts";
 import {
@@ -35,6 +37,8 @@ Commands:
   rm <kind> <id>               Delete a capability
   import [--targets a,b]       Import the folder's existing tool configs
   export <target> [--write]    Emit a target's config (optionally write to the folder)
+  bundle export [--out f]      Save the whole backpack to a portable JSON file (or stdout)
+  bundle import <f> [--replace] Load a bundle into the folder (merge, or replace)
   targets                      List export targets and their supported kinds
   serve [--port N]             Start the HTTP API
   help                         Show this help
@@ -68,6 +72,8 @@ export async function run(argv: string[], opts: RunOptions = {}): Promise<number
         file: { type: "string" },
         targets: { type: "string" },
         write: { type: "boolean" },
+        out: { type: "string" },
+        replace: { type: "boolean" },
         port: { type: "string" },
         q: { type: "string", short: "q" },
         help: { type: "boolean", short: "h" },
@@ -205,6 +211,45 @@ async function dispatch(
       const result = await ws().commands.exportTo({ target, write: values.write === true });
       io.out(json ? stringify(result) : formatExport(result));
       return 0;
+    }
+
+    case "bundle": {
+      const sub = need(args[0], "subcommand (export|import)");
+      if (sub === "export") {
+        const bundle = exportBundle(ws().repository);
+        const text = stringify(bundle);
+        const total = Object.values(bundle.capabilities).reduce((n, c) => n + c.length, 0);
+        if (typeof values.out === "string") {
+          await Bun.write(values.out, text + "\n");
+          io.out(`wrote bundle → ${values.out} (${total} capabilit${total === 1 ? "y" : "ies"})`);
+        } else {
+          io.out(text);
+        }
+        return 0;
+      }
+      if (sub === "import") {
+        const path = typeof args[1] === "string" ? args[1] : undefined;
+        const raw =
+          path !== undefined
+            ? await Bun.file(path).text()
+            : typeof values.file === "string"
+              ? await Bun.file(values.file).text()
+              : await io.readStdin();
+        if (!raw.trim()) {
+          throw new ApplicationError("bad_request", "No bundle provided (pass a file path, --file, or stdin).");
+        }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          throw new ApplicationError("bad_request", "Bundle is not valid JSON.");
+        }
+        const result = importBundle(ws().repository, parsed, { replace: values.replace === true });
+        await catalog.add(dir);
+        io.out(json ? stringify(result) : formatImport(result));
+        return 0;
+      }
+      throw new ApplicationError("bad_request", `Unknown bundle subcommand "${sub}" (use export|import).`);
     }
 
     default:

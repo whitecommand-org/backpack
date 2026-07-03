@@ -53,6 +53,7 @@ export interface CapabilityRepository {
   getRow(kind: CapabilityKind, id: string): CapabilityRow | null;
   upsertRow(row: Omit<CapabilityRow, "updatedAt">): void;
   remove(kind: CapabilityKind, id: string): void;
+  clear(): void;
   save(backpack: Backpack): Diagnostic[];
   load(opts?: LoadOptions): { backpack: Backpack; diagnostics: Diagnostic[] };
 }
