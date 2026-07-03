@@ -6,6 +6,8 @@ import {
   isGeneratedToolServer,
   mcpServerFromEntry,
   hooksFromSettings,
+  reverseHookEventMap,
+  CODEX_HOOK_EVENTS,
 } from "../shared/index.ts";
 
 /** Parses Codex CLI config (`config.toml`, prompts) into portable capabilities. */
@@ -76,6 +78,7 @@ export function codexImporter(): Importer {
       const { hooks, diagnostics: hookDiags } = hooksFromSettings(
         config,
         reader.label,
+        reverseHookEventMap(CODEX_HOOK_EVENTS),
       );
       diagnostics.push(...hookDiags);
 

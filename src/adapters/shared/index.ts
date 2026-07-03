@@ -7,6 +7,7 @@ export * from "./toml.ts";
 export * from "./tool-to-mcp.ts";
 export * from "./reader.ts";
 export * from "./frontmatter.ts";
+export * from "./hook-events.ts";
 
 /** Convert an arbitrary config key/filename into a valid kebab-case capability id. */
 export function slugify(value: string): string {

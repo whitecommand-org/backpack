@@ -1,30 +1,16 @@
 import type { Adapter, EmittedFile, Diagnostic } from "../../core/adapter.ts";
-import type {
-  Backpack,
-  McpServer,
-  Hook,
-  HookEvent,
-} from "../../core/index.ts";
+import type { Backpack, McpServer } from "../../core/index.ts";
 import {
   resolveMcpServers,
   tomlKeyValues,
   tomlPath,
   DEFAULT_TOOLS_MODULE,
+  CODEX_HOOK_EVENTS,
+  supportedHookEvents,
+  mapHooksForExport,
+  type MappedHook,
   type TomlValue,
 } from "../shared/index.ts";
-
-/** Hook events Codex maps natively; others become diagnostics. */
-const CODEX_HOOK_EVENTS = [
-  "PreToolUse",
-  "PostToolUse",
-  "SessionStart",
-  "UserPromptSubmit",
-  "Stop",
-  "PreCompact",
-  "PostCompact",
-  "SubagentStart",
-  "SubagentStop",
-] as const satisfies readonly HookEvent[];
 
 export interface CodexOptions {
   toolsModule?: string;
@@ -43,7 +29,7 @@ export function codexAdapter(opts: CodexOptions = {}): Adapter {
       hooks: true,
       skills: false, // No native skill slot — emitted as prompts.
       commands: true,
-      hookEvents: CODEX_HOOK_EVENTS,
+      hookEvents: supportedHookEvents(CODEX_HOOK_EVENTS),
     },
     emit(backpack: Backpack) {
       const files: EmittedFile[] = [];
@@ -74,21 +60,17 @@ export function codexAdapter(opts: CodexOptions = {}): Adapter {
         });
       }
 
-      // Hooks.
+      // Hooks (events mapped to Codex's names; unmapped skipped).
       const hooks = backpack.hooks.filter((h) => h.enabled);
-      const supportedHooks = hooks.filter((h) => {
-        const ok = (CODEX_HOOK_EVENTS as readonly string[]).includes(h.event);
-        if (!ok)
-          diagnostics.push({
-            level: "warn",
-            capabilityId: h.id,
-            message: `Codex does not support hook event "${h.event}"; skipped.`,
-          });
-        return ok;
-      });
-      if (supportedHooks.length > 0) {
+      const { mapped, diagnostics: hookDiags } = mapHooksForExport(
+        hooks,
+        CODEX_HOOK_EVENTS,
+        "Codex",
+      );
+      diagnostics.push(...hookDiags);
+      if (mapped.length > 0) {
         sections.push("[features]\nhooks = true");
-        sections.push(...hookSections(supportedHooks));
+        sections.push(...hookSections(mapped));
       }
 
       if (sections.length > 0) {
@@ -151,28 +133,28 @@ function mcpSection(server: McpServer): string {
   return `[${tomlPath("mcp_servers", server.id)}]\n` + tomlKeyValues(entries);
 }
 
-/** Group hooks by event + matcher into Codex's arrays-of-tables shape. */
-function hookSections(hooks: Hook[]): string[] {
-  const byEvent = new Map<HookEvent, Hook[]>();
-  for (const hook of hooks) {
-    const list = byEvent.get(hook.event) ?? [];
-    list.push(hook);
-    byEvent.set(hook.event, list);
+/** Group mapped hooks by native event + matcher into Codex's arrays-of-tables shape. */
+function hookSections(mapped: MappedHook[]): string[] {
+  const byEvent = new Map<string, MappedHook[]>();
+  for (const m of mapped) {
+    const list = byEvent.get(m.native) ?? [];
+    list.push(m);
+    byEvent.set(m.native, list);
   }
   const out: string[] = [];
   for (const [event, list] of byEvent) {
     // One matcher-group per distinct matcher.
-    const matchers = new Map<string, Hook[]>();
-    for (const hook of list) {
-      const key = hook.matcher ?? "";
+    const matchers = new Map<string, MappedHook[]>();
+    for (const m of list) {
+      const key = m.hook.matcher ?? "";
       const g = matchers.get(key) ?? [];
-      g.push(hook);
+      g.push(m);
       matchers.set(key, g);
     }
     for (const [matcher, group] of matchers) {
       let section = `[[${tomlPath("hooks", event)}]]`;
       if (matcher) section += `\n${tomlKeyValues({ matcher })}`;
-      for (const hook of group) {
+      for (const { hook } of group) {
         section +=
           `\n\n[[${tomlPath("hooks", event, "hooks")}]]\n` +
           tomlKeyValues({
@@ -186,7 +168,7 @@ function hookSections(hooks: Hook[]): string[] {
   return out;
 }
 
-function fullCommand(hook: Hook): string {
+function fullCommand(hook: MappedHook["hook"]): string {
   const { command, args } = hook.handler;
   return args && args.length ? `${command} ${args.join(" ")}` : command;
 }

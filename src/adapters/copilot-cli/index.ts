@@ -1,27 +1,15 @@
 import type { Adapter, EmittedFile, Diagnostic } from "../../core/adapter.ts";
-import type {
-  Backpack,
-  McpServer,
-  Agent,
-  Skill,
-  Hook,
-  HookEvent,
-} from "../../core/index.ts";
+import type { Backpack, McpServer, Agent, Skill } from "../../core/index.ts";
 import {
   resolveMcpServers,
   withFrontmatter,
   DEFAULT_TOOLS_MODULE,
+  COPILOT_HOOK_EVENTS,
+  supportedHookEvents,
+  mapHooksForExport,
+  type MappedHook,
   type YamlValue,
 } from "../shared/index.ts";
-
-/** Hook events Copilot CLI maps natively; others become diagnostics. */
-const COPILOT_HOOK_EVENTS = [
-  "PreToolUse",
-  "PostToolUse",
-  "SessionStart",
-  "UserPromptSubmit",
-  "Stop",
-] as const satisfies readonly HookEvent[];
 
 export interface CopilotOptions {
   toolsModule?: string;
@@ -40,7 +28,7 @@ export function copilotCliAdapter(opts: CopilotOptions = {}): Adapter {
       hooks: true,
       skills: false, // No skill primitive — emitted as agents.
       commands: false, // No standalone slash-command primitive — emitted as agents.
-      hookEvents: COPILOT_HOOK_EVENTS,
+      hookEvents: supportedHookEvents(COPILOT_HOOK_EVENTS),
     },
     emit(backpack: Backpack) {
       const files: EmittedFile[] = [];
@@ -100,23 +88,29 @@ export function copilotCliAdapter(opts: CopilotOptions = {}): Adapter {
         });
       }
 
-      // Hooks → settings.json.
+      // Hooks → settings.json (Copilot's camelCase events + native shape).
       const hooks = backpack.hooks.filter((h) => h.enabled);
-      const supported = hooks.filter((h) => {
-        const ok = (COPILOT_HOOK_EVENTS as readonly string[]).includes(h.event);
-        if (!ok)
+      const { mapped, diagnostics: hookDiags } = mapHooksForExport(
+        hooks,
+        COPILOT_HOOK_EVENTS,
+        "Copilot CLI",
+      );
+      diagnostics.push(...hookDiags);
+      for (const { hook } of mapped) {
+        if (hook.matcher) {
           diagnostics.push({
             level: "warn",
-            capabilityId: h.id,
-            message: `Copilot CLI does not support hook event "${h.event}"; skipped.`,
+            capabilityId: hook.id,
+            message: `Copilot CLI hooks have no tool matcher; matcher "${hook.matcher}" was dropped.`,
           });
-        return ok;
-      });
-      if (supported.length > 0) {
+        }
+      }
+      if (mapped.length > 0) {
         files.push({
           path: ".copilot/settings.json",
           scope: "user",
-          content: JSON.stringify({ hooks: hooksConfig(supported) }, null, 2) + "\n",
+          content:
+            JSON.stringify({ version: 1, hooks: hooksConfig(mapped) }, null, 2) + "\n",
         });
       }
 
@@ -168,26 +162,23 @@ function skillAsAgent(skill: Skill): string {
   return withFrontmatter(fm, skill.body);
 }
 
-function hooksConfig(hooks: Hook[]) {
+/**
+ * Copilot's hooks shape: each native event maps directly to an array of entries
+ * `{ type, bash, timeoutSec? }` — no matcher grouping, `bash` not `command`.
+ */
+function hooksConfig(mapped: MappedHook[]) {
   const config: Record<string, Array<Record<string, unknown>>> = {};
-  for (const hook of hooks) {
-    const byEvent = (config[hook.event] ??= []);
-    const matcher = hook.matcher ?? "";
-    let group = byEvent.find((g) => g.matcher === matcher);
-    if (!group) {
-      group = { matcher, hooks: [] };
-      byEvent.push(group);
-    }
-    (group.hooks as Array<Record<string, unknown>>).push({
+  for (const { native, hook } of mapped) {
+    (config[native] ??= []).push({
       type: "command",
-      command: fullCommand(hook),
-      ...(hook.handler.timeout ? { timeout: hook.handler.timeout } : {}),
+      bash: fullCommand(hook),
+      ...(hook.handler.timeout ? { timeoutSec: hook.handler.timeout } : {}),
     });
   }
   return config;
 }
 
-function fullCommand(hook: Hook): string {
+function fullCommand(hook: MappedHook["hook"]): string {
   const { command, args } = hook.handler;
   return args && args.length ? `${command} ${args.join(" ")}` : command;
 }

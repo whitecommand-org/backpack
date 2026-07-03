@@ -131,8 +131,15 @@ test("copilot emits mcp-config + agents, warns on skill and command", () => {
   expect(map.get(".github/agents/reviewer.md")).toContain("name: reviewer");
   expect(map.get(".github/agents/notes.md")).toContain("Do the thing.");
 
+  // Hooks: Copilot's native shape — version + camelCase event + `bash`, no matcher.
+  const settings = JSON.parse(map.get(".copilot/settings.json")!);
+  expect(settings.version).toBe(1);
+  expect(settings.hooks.preToolUse[0].bash).toBe("./guard.sh");
+  expect(settings.hooks.preToolUse[0].matcher).toBeUndefined();
+
+  // Diagnostics: skill (notes) + command (triage) unsupported, plus the dropped matcher (guard).
   const ids = diagnostics.map((d) => d.capabilityId).sort();
-  expect(ids).toEqual(["notes", "triage"]);
+  expect(ids).toEqual(["guard", "notes", "triage"]);
 });
 
 test("sdk bindings keep live handlers", async () => {

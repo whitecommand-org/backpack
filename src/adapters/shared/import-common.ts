@@ -1,6 +1,5 @@
 import type { Diagnostic } from "../../core/adapter.ts";
 import type { McpServer, Hook, Command } from "../../core/index.ts";
-import { HOOK_EVENTS } from "../../core/index.ts";
 import type { HookEvent } from "../../core/index.ts";
 import { slugify } from "./index.ts";
 
@@ -41,22 +40,25 @@ export function mcpServerFromEntry(
 
 /**
  * Reverse the `{ hooks: { Event: [{ matcher, hooks: [{ command }] }] } }` shape
- * (shared by Claude Code and Copilot settings) back into `Hook[]`.
+ * (Claude Code / Codex) back into `Hook[]`. `reverseMap` translates a native event
+ * name to a normalized `HookEvent`; native events absent from it are skipped.
  */
 export function hooksFromSettings(
   raw: unknown,
   origin: string,
+  reverseMap: Record<string, HookEvent>,
 ): { hooks: Hook[]; diagnostics: Diagnostic[] } {
   const hooks: Hook[] = [];
   const diagnostics: Diagnostic[] = [];
   const root = isRecord(raw) && isRecord(raw.hooks) ? raw.hooks : {};
 
   for (const [event, groups] of Object.entries(root)) {
-    if (!(HOOK_EVENTS as readonly string[]).includes(event)) {
+    const normalized = reverseMap[event];
+    if (!normalized) {
       diagnostics.push({
         level: "warn",
         capabilityId: "backpack",
-        message: `${origin}: unknown hook event "${event}" skipped.`,
+        message: `${origin}: unmapped hook event "${event}" skipped.`,
       });
       continue;
     }
@@ -70,14 +72,14 @@ export function hooksFromSettings(
       for (const entry of group.hooks) {
         if (!isRecord(entry) || typeof entry.command !== "string") continue;
         const id = slugify(
-          `${event}-${matcher ?? "all"}-${hooks.length}`,
+          `${normalized}-${matcher ?? "all"}-${hooks.length}`,
         );
         hooks.push({
           id,
           name: id,
-          description: `Imported ${event} hook`,
+          description: `Imported ${normalized} hook`,
           enabled: true,
-          event: event as HookEvent,
+          event: normalized,
           ...(matcher ? { matcher } : {}),
           handler: {
             type: "command",

@@ -11,6 +11,8 @@ import {
   mcpServerFromEntry,
   hooksFromSettings,
   argumentsFromHint,
+  reverseHookEventMap,
+  CLAUDE_HOOK_EVENTS,
 } from "../shared/index.ts";
 
 export interface ClaudeImporterOptions {
@@ -104,6 +106,7 @@ export function claudeCodeImporter(opts: ClaudeImporterOptions = {}): Importer {
       const { hooks, diagnostics: hookDiags } = hooksFromSettings(
         parsedSettings,
         reader.label,
+        reverseHookEventMap(CLAUDE_HOOK_EVENTS),
       );
       diagnostics.push(...hookDiags);
 

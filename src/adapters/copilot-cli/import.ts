@@ -1,13 +1,14 @@
 import type { Importer, SourceReader, ImportResult } from "../../core/importer.ts";
 import type { Diagnostic } from "../../core/adapter.ts";
-import type { McpServer, Agent } from "../../core/index.ts";
+import type { McpServer, Agent, Hook, HookEvent } from "../../core/index.ts";
 import {
   parseFrontmatter,
   toStringArray,
   slugify,
   isGeneratedToolServer,
   mcpServerFromEntry,
-  hooksFromSettings,
+  reverseHookEventMap,
+  COPILOT_HOOK_EVENTS,
 } from "../shared/index.ts";
 
 /** Parses GitHub Copilot CLI config into portable capabilities. */
@@ -47,9 +48,9 @@ export function copilotCliImporter(): Importer {
         if (md) agents.push(agentFromMarkdown(path, md, reader.label, diagnostics));
       }
 
-      // .copilot/settings.json → hooks
+      // .copilot/settings.json → hooks (Copilot's own shape + camelCase events)
       const settingsRaw = await reader.read(".copilot/settings.json");
-      const { hooks, diagnostics: hookDiags } = hooksFromSettings(
+      const { hooks, diagnostics: hookDiags } = copilotHooksFromSettings(
         settingsRaw ? safeJson(settingsRaw, diagnostics) : undefined,
         reader.label,
       );
@@ -90,6 +91,56 @@ function agentFromMarkdown(
       ? { userInvocable: data["user-invocable"] }
       : {}),
   };
+}
+
+/**
+ * Parse Copilot's hooks shape — `{ hooks: { <camelEvent>: [{ type, bash, timeoutSec }] } }`
+ * (no matcher grouping) — reverse-mapping camelCase events to normalized `HookEvent`s.
+ */
+function copilotHooksFromSettings(
+  raw: Record<string, unknown> | undefined,
+  origin: string,
+): { hooks: Hook[]; diagnostics: Diagnostic[] } {
+  const hooks: Hook[] = [];
+  const diagnostics: Diagnostic[] = [];
+  const reverse = reverseHookEventMap(COPILOT_HOOK_EVENTS);
+  const root =
+    raw && typeof raw.hooks === "object" && raw.hooks !== null
+      ? (raw.hooks as Record<string, unknown>)
+      : {};
+
+  for (const [nativeEvent, entries] of Object.entries(root)) {
+    const normalized: HookEvent | undefined = reverse[nativeEvent];
+    if (!normalized) {
+      diagnostics.push({
+        level: "warn",
+        capabilityId: "backpack",
+        message: `${origin}: unmapped Copilot hook event "${nativeEvent}" skipped.`,
+      });
+      continue;
+    }
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) {
+      if (!entry || typeof entry !== "object") continue;
+      const e = entry as Record<string, unknown>;
+      const command = typeof e.bash === "string" ? e.bash : typeof e.command === "string" ? e.command : undefined;
+      if (!command) continue;
+      const id = slugify(`${normalized}-${hooks.length}`);
+      hooks.push({
+        id,
+        name: id,
+        description: `Imported ${normalized} hook`,
+        enabled: true,
+        event: normalized,
+        handler: {
+          type: "command",
+          command,
+          ...(typeof e.timeoutSec === "number" ? { timeout: e.timeoutSec } : {}),
+        },
+      });
+    }
+  }
+  return { hooks, diagnostics };
 }
 
 function safeJson(

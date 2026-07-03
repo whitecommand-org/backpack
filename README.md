@@ -74,6 +74,13 @@ const sdk = toSdkBindings(backpack);
 target can't express a capability (e.g. Copilot has no skills; Codex agents have no
 inline system prompt). Inspect an adapter's `supports` to see coverage up front.
 
+**Hook events** are normalized, then mapped to each destination's native name on export
+(`src/adapters/shared/hook-events.ts`): Claude/Codex use PascalCase (`PreToolUse`), Copilot
+uses camelCase with renames (`Stop`→`agentStop`, `UserPromptSubmit`→`userPromptSubmitted`).
+An event with no equivalent is **skipped with a diagnostic** — Codex has no `SessionEnd`,
+Copilot no `PostCompact`. Import reverse-maps native names back. See each adapter's
+`supports.hookEvents` for the exact set.
+
 ## Import — adopt existing configs
 
 The inverse of `emit`: read a user's existing tool configs back into a `Backpack`.

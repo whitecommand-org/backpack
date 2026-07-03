@@ -1,17 +1,19 @@
 import type { Adapter, EmittedFile, Diagnostic } from "../../core/adapter.ts";
-import { HOOK_EVENTS } from "../../core/schemas/events.ts";
 import type {
   Backpack,
   McpServer,
   Agent,
   Skill,
   Command,
-  Hook,
 } from "../../core/index.ts";
 import {
   resolveMcpServers,
   withFrontmatter,
   DEFAULT_TOOLS_MODULE,
+  CLAUDE_HOOK_EVENTS,
+  supportedHookEvents,
+  mapHooksForExport,
+  type MappedHook,
   type YamlValue,
 } from "../shared/index.ts";
 
@@ -33,7 +35,7 @@ export function claudeCodeAdapter(opts: ClaudeCodeOptions = {}): Adapter {
       hooks: true,
       skills: true,
       commands: true,
-      hookEvents: HOOK_EVENTS, // Claude Code supports the full normalized set.
+      hookEvents: supportedHookEvents(CLAUDE_HOOK_EVENTS),
     },
     emit(backpack: Backpack) {
       const files: EmittedFile[] = [];
@@ -85,13 +87,19 @@ export function claudeCodeAdapter(opts: ClaudeCodeOptions = {}): Adapter {
         });
       }
 
-      // Hooks → settings.json.
+      // Hooks → settings.json (events mapped to Claude's names; unmapped skipped).
       const hooks = backpack.hooks.filter((h) => h.enabled);
-      if (hooks.length > 0) {
+      const { mapped, diagnostics: hookDiags } = mapHooksForExport(
+        hooks,
+        CLAUDE_HOOK_EVENTS,
+        "Claude Code",
+      );
+      diagnostics.push(...hookDiags);
+      if (mapped.length > 0) {
         files.push({
           path: ".claude/settings.json",
           scope: "project",
-          content: JSON.stringify({ hooks: hooksConfig(hooks) }, null, 2) + "\n",
+          content: JSON.stringify({ hooks: hooksConfig(mapped) }, null, 2) + "\n",
         });
       }
 
@@ -158,11 +166,11 @@ function commandFile(command: Command): string {
   return withFrontmatter(fm, command.body);
 }
 
-/** Group hooks by event, then by matcher, into Claude's settings.json shape. */
-function hooksConfig(hooks: Hook[]) {
+/** Group mapped hooks by native event, then by matcher, into Claude's shape. */
+function hooksConfig(mapped: MappedHook[]) {
   const config: Record<string, Array<Record<string, unknown>>> = {};
-  for (const hook of hooks) {
-    const byEvent = (config[hook.event] ??= []);
+  for (const { native, hook } of mapped) {
+    const byEvent = (config[native] ??= []);
     const matcher = hook.matcher ?? "";
     let group = byEvent.find((g) => g.matcher === matcher);
     if (!group) {
@@ -178,7 +186,7 @@ function hooksConfig(hooks: Hook[]) {
   return config;
 }
 
-function fullCommand(hook: Hook): string {
+function fullCommand(hook: MappedHook["hook"]): string {
   const { command, args } = hook.handler;
   return args && args.length ? `${command} ${args.join(" ")}` : command;
 }
