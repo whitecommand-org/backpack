@@ -2,9 +2,11 @@
   "name": "@whitecommand-org/backpack",
   "version": "0.1.0",
   "description": "A portable backpack of AI coding-agent capabilities — one source, emitted to Claude Code, Codex, and GitHub Copilot CLI.",
-  "module": "index.ts",
   "type": "module",
   "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/whitecommand-org/backpack.git"
