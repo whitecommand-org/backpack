@@ -133,6 +133,28 @@ test("claude-code import warns only when frontmatter yields nothing", async () =
   expect(diagnostics.some((d) => /invalid frontmatter in .*garbage\.md/.test(d.message))).toBe(true);
 });
 
+test("claude-code imports MCP servers from ~/.claude.json (user + project scope)", async () => {
+  const root = "/home/dev/project";
+  const claudeJson = JSON.stringify({
+    mcpServers: {
+      playwright: { command: "npx", args: ["@playwright/mcp"] },
+      notion: { type: "http", url: "https://mcp.notion.com/mcp" },
+    },
+    projects: {
+      [root]: { mcpServers: { context7: { command: "npx", args: ["-y", "c7"] } } },
+      "/other/proj": { mcpServers: { unrelated: { command: "nope" } } },
+    },
+  });
+  const reader = new MemoryReader({ ".claude.json": claudeJson }, "~", root);
+
+  const { capabilities } = await claudeCodeImporter().import(reader);
+  const ids = (capabilities.mcpServers ?? []).map((s) => s.id).sort();
+  // user-scoped playwright/notion + this project's context7; NOT /other/proj's.
+  expect(ids).toEqual(["context7", "notion", "playwright"]);
+  const http = capabilities.mcpServers?.find((s) => s.id === "notion");
+  expect(http?.connection.type).toBe("http");
+});
+
 test("codex import recovers servers, agents (lossy) and prompts", async () => {
   const { files } = codexAdapter().emit(fixture());
   const { capabilities, diagnostics } = await codexImporter().import(reader(files));

@@ -23,22 +23,38 @@ export function claudeCodeImporter(): Importer {
       const skills: Skill[] = [];
       const commands: Command[] = [];
 
-      // .mcp.json
-      const mcpRaw = await reader.read(".mcp.json");
-      if (mcpRaw) {
-        const parsed = safeJson(mcpRaw, ".mcp.json", diagnostics);
-        const servers = (parsed?.mcpServers ?? {}) as Record<string, Record<string, unknown>>;
-        for (const [id, entry] of Object.entries(servers)) {
-          const server = mcpServerFromEntry(id, entry);
+      // MCP servers live in `.mcp.json` (project scope) AND `.claude.json`
+      // (top-level = user scope; projects[<abs dir>] = per-folder scope).
+      const seenServers = new Set<string>();
+      const addServers = (raw: unknown, origin: string) => {
+        if (!raw || typeof raw !== "object") return;
+        for (const [id, entry] of Object.entries(raw as Record<string, unknown>)) {
+          if (!entry || typeof entry !== "object") continue;
+          const server = mcpServerFromEntry(id, entry as Record<string, unknown>);
           if (isGeneratedToolServer(server)) {
             diagnostics.push({
               level: "warn",
               capabilityId: server.id,
-              message: `${reader.label}: skipped generated tools-server "${id}".`,
+              message: `${origin}: skipped generated tools-server "${id}".`,
             });
             continue;
           }
+          if (seenServers.has(server.id)) continue;
+          seenServers.add(server.id);
           mcpServers.push(server);
+        }
+      };
+
+      const mcpRaw = await reader.read(".mcp.json");
+      if (mcpRaw) addServers(safeJson(mcpRaw, ".mcp.json", diagnostics)?.mcpServers, ".mcp.json");
+
+      const claudeRaw = await reader.read(".claude.json");
+      if (claudeRaw) {
+        const parsed = safeJson(claudeRaw, ".claude.json", diagnostics);
+        addServers(parsed?.mcpServers, ".claude.json (user)");
+        if (reader.root) {
+          const projects = (parsed?.projects ?? {}) as Record<string, { mcpServers?: unknown }>;
+          addServers(projects[reader.root]?.mcpServers, `.claude.json (${reader.root})`);
         }
       }
 

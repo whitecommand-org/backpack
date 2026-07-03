@@ -12,6 +12,8 @@ import type { Command } from "./schemas/command.ts";
 export interface SourceReader {
   /** A label for diagnostics, e.g. "project" or "~". */
   label: string;
+  /** Absolute path of the reader's base, when known (used for path-keyed configs). */
+  root?: string;
   /** Return the file's text, or null if it doesn't exist. */
   read(relPath: string): Promise<string | null>;
   /** List files under `dir` matching an optional glob, as relative paths. */

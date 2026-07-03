@@ -87,8 +87,10 @@ import {
 
 const { backpack, diagnostics } = await importBackpack(
   [claudeCodeImporter(), codexImporter(), copilotCliImporter()],
-  diskReaders(), // scans the project dir AND the user's home dir (~/.claude, ~/.codex, ~/.copilot)
+  diskReaders(), // scans the project dir AND the user's home dir
 );
+// Claude MCP servers are read from `.mcp.json` and `~/.claude.json` (both the
+// top-level user-scoped `mcpServers` and the `projects[<dir>].mcpServers` entry).
 ```
 
 Import is honest about what configs can't carry: a tool's live `handler` is never in a
