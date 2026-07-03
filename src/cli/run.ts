@@ -295,6 +295,9 @@ function stringify(value: unknown): string {
 }
 
 async function version(): Promise<string> {
+  // Compiled binaries inject this via `bun build --define`; a bare `bun cli.ts`
+  // run has no such value and falls back to reading package.json.
+  if (process.env.BACKPACK_VERSION) return process.env.BACKPACK_VERSION;
   try {
     const pkg = await Bun.file(new URL("../../package.json", import.meta.url)).json();
     return String(pkg.version ?? "0.0.0");

@@ -1,0 +1,49 @@
+name: release-binaries
+
+# Build standalone CLI binaries and attach them to the GitHub Release for the tag.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write # create the Release and upload assets (uses GITHUB_TOKEN)
+
+jobs:
+  build:
+    runs-on: ubuntu-latest # Bun cross-compiles every target from a single Linux host
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install --frozen-lockfile
+
+      - name: Typecheck and test
+        run: |
+          bunx tsc --noEmit
+          bun test
+
+      - name: Compile cross-platform binaries
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          for target in bun-linux-x64 bun-linux-arm64 bun-darwin-x64 bun-darwin-arm64 bun-windows-x64; do
+            out="backpack-${target#bun-}"
+            [ "$target" = "bun-windows-x64" ] && out="${out}.exe"
+            echo "Building $out ($target) @ $VERSION"
+            bun build ./cli.ts --compile --target="$target" \
+              --define process.env.BACKPACK_VERSION="\"$VERSION\"" \
+              --outfile "dist/$out"
+          done
+          cd dist
+          for f in *; do sha256sum "$f" > "$f.sha256"; done
+          ls -lh
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

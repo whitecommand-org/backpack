@@ -1,0 +1,39 @@
+name: npm-publish
+
+# Publish @whitecommand-org/backpack to npm when a version tag is pushed.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+  id-token: write # required for npm provenance (public repos only)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org" # writes .npmrc with the auth token
+
+      - run: bun install --frozen-lockfile
+
+      - name: Typecheck and test
+        run: |
+          bunx tsc --noEmit
+          bun test
+
+      - name: Set version from tag
+        run: npm pkg set version="${GITHUB_REF_NAME#v}" # no git commit
+
+      - name: Publish
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

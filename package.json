@@ -1,30 +1,51 @@
 {
-  "name": "backpack",
+  "name": "@whitecommand-org/backpack",
   "version": "0.1.0",
+  "description": "A portable backpack of AI coding-agent capabilities — one source, emitted to Claude Code, Codex, and GitHub Copilot CLI.",
   "module": "index.ts",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/whitecommand-org/backpack.git"
+  },
   "bin": {
     "backpack": "cli.ts"
+  },
+  "files": [
+    "cli.ts",
+    "index.ts",
+    "server.ts",
+    "src",
+    "bunfig.toml",
+    "README.md"
+  ],
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "serve": "bun server.ts",
     "cli": "bun cli.ts",
     "demo": "bun run index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "build:cli": "bun build ./cli.ts --compile --outfile dist/backpack"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "bun-plugin-tailwind": "^0.1.2",
-    "tailwindcss": "^4.3.2"
+    "@types/react-dom": "^19.2.3"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
+    "bun-plugin-tailwind": "^0.1.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "tailwindcss": "^4.3.2",
     "zod": "^4.4.3"
   }
 }

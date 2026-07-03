@@ -5,16 +5,16 @@
     "": {
       "name": "backpack",
       "dependencies": {
+        "bun-plugin-tailwind": "^0.1.2",
         "react": "^19.2.7",
         "react-dom": "^19.2.7",
+        "tailwindcss": "^4.3.2",
         "zod": "^4.4.3",
       },
       "devDependencies": {
         "@types/bun": "latest",
         "@types/react": "^19.2.17",
         "@types/react-dom": "^19.2.3",
-        "bun-plugin-tailwind": "^0.1.2",
-        "tailwindcss": "^4.3.2",
       },
       "peerDependencies": {
         "typescript": "^5",

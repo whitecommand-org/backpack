@@ -11,6 +11,38 @@ bun server.ts      # start the HTTP API (default :4000)
 bun test
 ```
 
+## Install the CLI
+
+**Standalone binary (no Bun required)** — download the asset for your platform from the
+[latest release](https://github.com/whitecommand-org/backpack/releases/latest), then:
+
+```bash
+chmod +x backpack-darwin-arm64 && mv backpack-darwin-arm64 /usr/local/bin/backpack
+backpack --version
+```
+
+**Via Bun** (requires [Bun](https://bun.com)):
+
+```bash
+bunx @whitecommand-org/backpack overview --dir .
+bun add -g @whitecommand-org/backpack     # then: backpack …
+```
+
+### Cutting a release
+
+Both pipelines trigger on a `v*.*.*` tag push:
+
+```bash
+git tag v0.1.1 && git push origin v0.1.1
+```
+
+- **release-binaries** compiles the CLI for linux/darwin/windows (x64 + arm64) and attaches the
+  binaries + `.sha256` checksums to the GitHub Release.
+- **npm-publish** sets the version from the tag and publishes `@whitecommand-org/backpack`.
+
+One-time setup: add an `NPM_TOKEN` repo secret (npm *Automation* token with publish rights to the
+`@whitecommand-org` scope). `GITHUB_TOKEN` is provided automatically for the release upload.
+
 ## Capabilities
 
 | Capability | What it is |
