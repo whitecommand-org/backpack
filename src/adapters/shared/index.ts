@@ -1,6 +1,8 @@
+import { homedir } from "node:os";
 import type { Backpack, McpServer } from "../../core/index.ts";
 import type { EmittedFile } from "../../core/adapter.ts";
 import { materializeTools } from "./tool-to-mcp.ts";
+import { localizeServer } from "./path-portability.ts";
 
 export * from "./yaml.ts";
 export * from "./toml.ts";
@@ -8,6 +10,7 @@ export * from "./tool-to-mcp.ts";
 export * from "./reader.ts";
 export * from "./frontmatter.ts";
 export * from "./hook-events.ts";
+export * from "./path-portability.ts";
 
 /** Convert an arbitrary config key/filename into a valid kebab-case capability id. */
 export function slugify(value: string): string {
@@ -50,8 +53,12 @@ export interface McpResolution {
 export function resolveMcpServers(
   backpack: Backpack,
   toolsModule: string = DEFAULT_TOOLS_MODULE,
+  home: string = homedir(),
 ): McpResolution {
-  const explicit = backpack.mcpServers.filter((s) => s.enabled);
+  // Expand `${HOME}` in explicit servers to the local machine's home on export.
+  const explicit = backpack.mcpServers
+    .filter((s) => s.enabled)
+    .map((s) => localizeServer(s, home));
   const enabledTools = backpack.tools.filter((t) => t.enabled);
   if (enabledTools.length === 0) return { servers: explicit };
 

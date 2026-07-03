@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import type {
   Backpack,
   Tool,
@@ -7,6 +8,7 @@ import type {
   ToolResult,
 } from "../../core/index.ts";
 import { toJsonSchema } from "../../core/index.ts";
+import { localizeServer, localizeHook } from "../shared/path-portability.ts";
 
 /**
  * A tool bound for in-process execution: JSON-Schema for the model, live handler
@@ -46,12 +48,14 @@ export interface SdkBindings {
  * instead it returns in-memory objects (tools keep their live `handler`) ready to
  * register with the Claude Agent SDK or Copilot SDK at runtime.
  */
-export function toSdkBindings(backpack: Backpack): SdkBindings {
+export function toSdkBindings(backpack: Backpack, home: string = homedir()): SdkBindings {
   return {
-    mcpServers: backpack.mcpServers.filter((s) => s.enabled),
+    mcpServers: backpack.mcpServers.filter((s) => s.enabled).map((s) => localizeServer(s, home)),
     tools: backpack.tools.filter((t) => t.enabled).map(toSdkTool),
     agents: backpack.agents.filter((a) => a.enabled).map(toSdkAgent),
-    hooks: backpack.hooks.filter((h) => h.enabled).map(toSdkHook),
+    hooks: backpack.hooks
+      .filter((h) => h.enabled)
+      .map((h) => toSdkHook(localizeHook(h, home))),
   };
 }
 

@@ -1,5 +1,7 @@
+import { homedir } from "node:os";
 import type { HookEvent, Hook } from "../../core/index.ts";
 import type { Diagnostic } from "../../core/adapter.ts";
+import { localizeHook } from "./path-portability.ts";
 
 /**
  * Maps normalized `HookEvent`s to a target tool's native event name. A key that is
@@ -76,6 +78,7 @@ export function mapHooksForExport(
   hooks: Hook[],
   map: HookEventMap,
   tool: string,
+  home: string = homedir(),
 ): { mapped: MappedHook[]; diagnostics: Diagnostic[] } {
   const mapped: MappedHook[] = [];
   const diagnostics: Diagnostic[] = [];
@@ -89,7 +92,8 @@ export function mapHooksForExport(
       });
       continue;
     }
-    mapped.push({ native, hook });
+    // Expand `${HOME}` in the command to the local machine's home on export.
+    mapped.push({ native, hook: localizeHook(hook, home) });
   }
   return { mapped, diagnostics };
 }

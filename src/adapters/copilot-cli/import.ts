@@ -1,6 +1,7 @@
 import type { Importer, SourceReader, ImportResult } from "../../core/importer.ts";
 import type { Diagnostic } from "../../core/adapter.ts";
 import type { McpServer, Agent, Hook, HookEvent } from "../../core/index.ts";
+import { homedir } from "node:os";
 import {
   parseFrontmatter,
   toStringArray,
@@ -9,6 +10,7 @@ import {
   mcpServerFromEntry,
   reverseHookEventMap,
   COPILOT_HOOK_EVENTS,
+  toPortableString,
 } from "../shared/index.ts";
 
 /** Parses GitHub Copilot CLI config into portable capabilities. */
@@ -100,6 +102,7 @@ function agentFromMarkdown(
 function copilotHooksFromSettings(
   raw: Record<string, unknown> | undefined,
   origin: string,
+  home: string = homedir(),
 ): { hooks: Hook[]; diagnostics: Diagnostic[] } {
   const hooks: Hook[] = [];
   const diagnostics: Diagnostic[] = [];
@@ -134,7 +137,7 @@ function copilotHooksFromSettings(
         event: normalized,
         handler: {
           type: "command",
-          command,
+          command: toPortableString(command, home),
           ...(typeof e.timeoutSec === "number" ? { timeout: e.timeoutSec } : {}),
         },
       });

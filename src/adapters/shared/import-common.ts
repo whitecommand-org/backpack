@@ -1,12 +1,15 @@
+import { homedir } from "node:os";
 import type { Diagnostic } from "../../core/adapter.ts";
 import type { McpServer, Hook, Command } from "../../core/index.ts";
 import type { HookEvent } from "../../core/index.ts";
 import { slugify } from "./index.ts";
+import { toPortableString } from "./path-portability.ts";
 
 /** Reconstruct an `McpServer` from a JSON config entry (Claude/Copilot shape). */
 export function mcpServerFromEntry(
   id: string,
   entry: Record<string, unknown>,
+  home: string = homedir(),
 ): McpServer {
   const url = typeof entry.url === "string" ? entry.url : undefined;
   const base = {
@@ -26,14 +29,20 @@ export function mcpServerFromEntry(
       },
     };
   }
+  const p = (v: string) => toPortableString(v, home);
+  const env = isRecord(entry.env)
+    ? Object.fromEntries(
+        Object.entries(entry.env as Record<string, unknown>).map(([k, v]) => [k, p(String(v))]),
+      )
+    : undefined;
   return {
     ...base,
     connection: {
       type: "stdio",
-      command: String(entry.command ?? ""),
-      args: Array.isArray(entry.args) ? entry.args.map(String) : [],
-      ...(isRecord(entry.env) ? { env: entry.env as Record<string, string> } : {}),
-      ...(typeof entry.cwd === "string" ? { cwd: entry.cwd } : {}),
+      command: p(String(entry.command ?? "")),
+      args: Array.isArray(entry.args) ? entry.args.map((a) => p(String(a))) : [],
+      ...(env ? { env } : {}),
+      ...(typeof entry.cwd === "string" ? { cwd: p(entry.cwd) } : {}),
     },
   };
 }
@@ -47,6 +56,7 @@ export function hooksFromSettings(
   raw: unknown,
   origin: string,
   reverseMap: Record<string, HookEvent>,
+  home: string = homedir(),
 ): { hooks: Hook[]; diagnostics: Diagnostic[] } {
   const hooks: Hook[] = [];
   const diagnostics: Diagnostic[] = [];
@@ -83,7 +93,7 @@ export function hooksFromSettings(
           ...(matcher ? { matcher } : {}),
           handler: {
             type: "command",
-            command: entry.command,
+            command: toPortableString(entry.command, home),
             ...(typeof entry.timeout === "number"
               ? { timeout: entry.timeout }
               : {}),

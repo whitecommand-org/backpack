@@ -107,6 +107,12 @@ skipped); Codex agents have no recoverable system prompt. Such losses surface as
 diagnostics. Merge is by id per kind (first-wins). This enables migration:
 **import from Claude Code → `emit` to Copilot**.
 
+**Home-dir paths are portable across machines** (`src/adapters/shared/path-portability.ts`):
+on import, absolute paths under the user's home (in MCP `command`/`args`/`cwd`/`env` and hook
+commands) are stored as `${HOME}/…`; on export they expand to the *local* machine's home. So
+a backpack imported on one machine emits working paths on another. Relative paths, `npx`/`bunx`,
+and non-home absolute paths (e.g. `/opt/…`) are left as-is.
+
 ## SQLite storage — a durable backpack
 
 ```ts
